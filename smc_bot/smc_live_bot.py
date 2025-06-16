@@ -12,23 +12,38 @@ DAILY_PROFIT_TARGET = 60000 # Daily profit target in $
 
 # ======= Risk Tools =======
 class DailyRiskManager:
-    def __init__(self, max_loss=20000, profit_target=60000):
+    def __init__(self, max_loss=20000, profit_target=60000, max_trades=30):
         self.max_loss = max_loss
         self.profit_target = profit_target
+        self.max_trades = max_trades
         self._reset_day()
+
     def _reset_day(self):
         self.day = datetime.date.today()
         self.day_pnl = 0
+        self.day_trades = 0
+
     def update_pnl(self, profit):
         if datetime.date.today() != self.day:
             self._reset_day()
         self.day_pnl += profit
+
+    def record_trade(self):
+        if datetime.date.today() != self.day:
+            self._reset_day()
+        self.day_trades += 1
+
     def can_trade(self):
+        if datetime.date.today() != self.day:
+            self._reset_day()
         if self.day_pnl <= -abs(self.max_loss):
             print(f"Max daily loss hit: ${self.day_pnl:.2f}")
             return False
         if self.day_pnl >= self.profit_target:
             print(f"Daily profit target reached: ${self.day_pnl:.2f}")
+            return False
+        if self.day_trades >= self.max_trades:
+            print(f"Max trades per day reached: {self.day_trades}")
             return False
         return True
 
@@ -100,7 +115,11 @@ smc_core = SMCStrategyCore(
     atr_thresh=0.01,
     session_only=False
 )
-risk_manager = DailyRiskManager(max_loss=MAX_DAILY_LOSS, profit_target=DAILY_PROFIT_TARGET)
+risk_manager = DailyRiskManager(
+    max_loss=MAX_DAILY_LOSS,
+    profit_target=DAILY_PROFIT_TARGET,
+    max_trades=30,
+)
 
 if not mt5.initialize():
     print("Failed to initialize MT5:", mt5.last_error())
@@ -200,6 +219,7 @@ while True:
         }
         res = mt5.order_send(request)
         print(f"{signal['signal'].upper()} Order Result:", res)
+        risk_manager.record_trade()
 
         time.sleep(30)
         profit = get_last_closed_trade_profit(SYMBOL)
